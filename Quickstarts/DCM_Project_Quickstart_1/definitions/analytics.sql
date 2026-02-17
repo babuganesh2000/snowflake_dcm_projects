@@ -1,7 +1,7 @@
-define schema DCM_PROJECT_{{env_suffix}}.ANALYTICS;
+define schema DCM_DEMO_1{{env_suffix}}.ANALYTICS;
 
-define dynamic table DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
-warehouse = DCM_PROJECT_WH_{{env_suffix}}
+define dynamic table DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+warehouse = DCM_DEMO_1_WH{{env_suffix}}
 target_lag = 'DOWNSTREAM'
 initialize = 'ON_SCHEDULE'
 data_metric_schedule = 'TRIGGER_ON_CHANGES'
@@ -23,18 +23,18 @@ select
     t.TRUCK_ID,
     t.TRUCK_BRAND_NAME
 from
-    DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER oh
+    DCM_DEMO_1{{env_suffix}}.RAW.ORDER_HEADER oh
 join 
-    DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL od 
+    DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL od 
     on oh.ORDER_ID = od.ORDER_ID
 join 
-    DCM_PROJECT_{{env_suffix}}.RAW.MENU m 
+    DCM_DEMO_1{{env_suffix}}.RAW.MENU m 
     on od.MENU_ITEM_ID = m.MENU_ITEM_ID
 join 
-    DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER c 
+    DCM_DEMO_1{{env_suffix}}.RAW.CUSTOMER c 
     on oh.CUSTOMER_ID = c.CUSTOMER_ID
 join 
-    DCM_PROJECT_{{env_suffix}}.RAW.TRUCK t 
+    DCM_DEMO_1{{env_suffix}}.RAW.TRUCK t 
     on oh.TRUCK_ID = t.TRUCK_ID
 qualify row_number() over (
     partition by 
@@ -46,8 +46,8 @@ qualify row_number() over (
 ;
 
 
-define dynamic table DCM_PROJECT_{{env_suffix}}.ANALYTICS.MENU_ITEM_POPULARITY
-warehouse = DCM_PROJECT_WH_{{env_suffix}}
+define dynamic table DCM_DEMO_1{{env_suffix}}.ANALYTICS.MENU_ITEM_POPULARITY
+warehouse = DCM_DEMO_1_WH{{env_suffix}}
 target_lag = '1 day'
 initialize = 'ON_SCHEDULE'
 data_metric_schedule = 'TRIGGER_ON_CHANGES'
@@ -55,11 +55,11 @@ as
 select
     MENU_ITEM_NAME,
     ITEM_CATEGORY,
-    COUNT(distinct ORDER_ID) as NUMBER_OF_ORDERS,
-    SUM(QUANTITY) as TOTAL_QUANTITY_SOLD,
-    SUM(LINE_ITEM_REVENUE) as TOTAL_REVENUE
+    count(distinct ORDER_ID) as NUMBER_OF_ORDERS,
+    sum(QUANTITY) as TOTAL_QUANTITY_SOLD,
+    sum(LINE_ITEM_REVENUE) as TOTAL_REVENUE
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
 group by
     MENU_ITEM_NAME, 
     ITEM_CATEGORY
@@ -68,8 +68,8 @@ order by
 ;
 
 
-define dynamic table DCM_PROJECT_{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY
-warehouse = DCM_PROJECT_WH_{{env_suffix}}
+define dynamic table DCM_DEMO_1{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY
+warehouse = DCM_DEMO_1_WH{{env_suffix}}
 target_lag = '2 days'
 initialize = 'ON_SCHEDULE'
 as
@@ -78,12 +78,12 @@ select
     FIRST_NAME,
     LAST_NAME,
     CUSTOMER_CITY,
-    COUNT(distinct ORDER_ID) as TOTAL_ORDERS,
-    SUM(LINE_ITEM_REVENUE) as TOTAL_SPEND_USD,
+    count(distinct ORDER_ID) as TOTAL_ORDERS,
+    sum(LINE_ITEM_REVENUE) as TOTAL_SPEND_USD,
     MIN(ORDER_TS) as FIRST_ORDER_DATE,
     MAX(ORDER_TS) as LATEST_ORDER_DATE
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
 group by
     CUSTOMER_ID, 
     FIRST_NAME, 
@@ -94,20 +94,34 @@ order by
 ;
 
 
-define dynamic table DCM_PROJECT_{{env_suffix}}.ANALYTICS.TRUCK_PERFORMANCE
-warehouse = DCM_PROJECT_WH_{{env_suffix}}
+define dynamic table DCM_DEMO_1{{env_suffix}}.ANALYTICS.TRUCK_PERFORMANCE
+warehouse = DCM_DEMO_1_WH{{env_suffix}}
 target_lag = '12 hours'
 initialize = 'ON_SCHEDULE'
 as
 select
     TRUCK_BRAND_NAME,
-    COUNT(distinct ORDER_ID) as TOTAL_ORDERS,
-    SUM(LINE_ITEM_REVENUE) as TOTAL_REVENUE,
-    SUM(LINE_ITEM_PROFIT) as TOTAL_PROFIT
+    count(distinct ORDER_ID) as TOTAL_ORDERS,
+    sum(LINE_ITEM_REVENUE) as TOTAL_REVENUE,
+    sum(LINE_ITEM_PROFIT) as TOTAL_PROFIT,
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.CALCULATE_PROFIT_MARGIN(sum(LINE_ITEM_REVENUE),
+    sum(LINE_ITEM_REVENUE) - sum(LINE_ITEM_PROFIT)) as PROFIT_MARGIN_PCT
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
 group by
     TRUCK_BRAND_NAME
 order by
     TOTAL_REVENUE desc
+;
+
+
+define function DCM_DEMO_1{{env_suffix}}.ANALYTICS.CALCULATE_PROFIT_MARGIN(REVENUE number, COST number)
+returns NUMBER(10,2)
+as
+$$
+    case when REVENUE = 0 
+then 0
+else round(((REVENUE - COST) / REVENUE) * 100, 2)
+    end
+$$
 ;

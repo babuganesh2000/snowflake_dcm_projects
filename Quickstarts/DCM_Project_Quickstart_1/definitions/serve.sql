@@ -1,7 +1,7 @@
-define schema DCM_PROJECT_{{env_suffix}}.SERVE;
+define schema DCM_DEMO_1{{env_suffix}}.SERVE;
 
 
-define view DCM_PROJECT_{{env_suffix}}.SERVE.V_DASHBOARD_DAILY_SALES
+define view DCM_DEMO_1{{env_suffix}}.SERVE.V_DASHBOARD_DAILY_SALES
 data_metric_schedule = 'USING CRON 0 8 * * * UTC'
 as
 select
@@ -10,7 +10,7 @@ select
     sum(LINE_ITEM_REVENUE) as DAILY_REVENUE,
     sum(LINE_ITEM_PROFIT) as DAILY_PROFITS
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
 group by
     SALE_DATE
 order by
@@ -19,7 +19,7 @@ order by
 
 
 
-define view DCM_PROJECT_{{env_suffix}}.SERVE.V_DASHBOARD_KPI_SUMMARY
+define view DCM_DEMO_1{{env_suffix}}.SERVE.V_DASHBOARD_KPI_SUMMARY
 data_metric_schedule = 'USING CRON 0 8 * * * UTC'
 as
 select
@@ -28,12 +28,12 @@ select
     sum(TOTAL_ORDERS) as TOTAL_ORDERS,
     sum(TOTAL_SPEND_USD) / sum(TOTAL_ORDERS) as AVERAGE_ORDER_VALUE
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY
 ;
 
 
 
-define view DCM_PROJECT_{{env_suffix}}.SERVE.V_DASHBOARD_SALES_BY_CATEGORY_CITY
+define view DCM_DEMO_1{{env_suffix}}.SERVE.V_DASHBOARD_SALES_BY_CATEGORY_CITY
 data_metric_schedule = 'USING CRON 0 4 * * * UTC'
 as
 select
@@ -41,7 +41,7 @@ select
     CUSTOMER_CITY,
     sum(LINE_ITEM_REVENUE) as TOTAL_REVENUE
 from
-    DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
+    DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS
 group by
     ITEM_CATEGORY, 
     CUSTOMER_CITY
@@ -51,7 +51,7 @@ order by
 ;
 
 
-define view DCM_PROJECT_{{env_suffix}}.SERVE.V_DASHBOARD_NEW_VS_RETURNING_CUSTOMERS
+define secure view DCM_DEMO_1{{env_suffix}}.SERVE.V_DASHBOARD_NEW_VS_RETURNING_CUSTOMERS
 data_metric_schedule = 'USING CRON 0 8 * * * UTC'
 as
 with
@@ -63,9 +63,9 @@ customer_order_dates as (
         date_trunc('DAY', s.FIRST_ORDER_DATE) as CUSTOMER_FIRST_ORDER_DATE,
         e.LINE_ITEM_REVENUE
     from
-        DCM_PROJECT_{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS e
+        DCM_DEMO_1{{env_suffix}}.ANALYTICS.ENRICHED_ORDER_DETAILS e
     join
-        DCM_PROJECT_{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY s 
+        DCM_DEMO_1{{env_suffix}}.ANALYTICS.CUSTOMER_SPENDING_SUMMARY s 
         on e.CUSTOMER_ID = s.CUSTOMER_ID
 )
 select

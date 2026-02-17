@@ -1,6 +1,7 @@
 -- ### Insert Sample Data
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.TRUCK values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.TRUCK 
+values
     (103, 'Taco Titan', 'Mexican Street Food'),
     (104, 'The Rolling Dough', 'Artisan Pizza'),
     (105, 'Wok n Roll', 'Asian Fusion'),
@@ -10,7 +11,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.TRUCK values
     (109, 'BBQ Barn', 'Slow-cooked Brisket'),
     (110, 'Sweet Retreat', 'Desserts & Shakes');
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.MENU values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.MENU 
+values
     (7, 'Beef Birria Tacos', 'Tacos', 3.00, 11.50),
     (8, 'Margherita Pizza', 'Pizza', 4.50, 12.00),
     (9, 'Pad Thai', 'Noodles', 3.50, 10.00),
@@ -26,7 +28,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.MENU values
     (19, 'Mango Lassi', 'Drinks', 1.00, 4.50),
     (20, 'Double Pepperoni Pizza', 'Pizza', 5.00, 14.00);
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.CUSTOMER 
+values
     (4, 'David', 'Miller', 'London'),
     (5, 'Eve', 'Davis', 'New York'),
     (6, 'Frank', 'Wilson', 'Chicago'),
@@ -45,7 +48,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER values
     (19, 'Sam', 'Clark', 'San Francisco'),
     (20, 'Tina', 'Rodriguez', 'New York');
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.INVENTORY values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.INVENTORY 
+values
     (7, 103, 50, '2023-10-27 09:00:00'), (8, 104, 40, '2023-10-27 09:00:00'),
     (9, 105, 30, '2023-10-27 09:00:00'), (10, 106, 45, '2023-10-27 09:00:00'),
     (11, 107, 35, '2023-10-27 09:00:00'), (12, 108, 60, '2023-10-27 09:00:00'),
@@ -57,7 +61,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.INVENTORY values
     (17, 105, 40, '2023-10-27 08:00:00'), (18, 107, 90, '2023-10-27 08:00:00'),
     (19, 106, 60, '2023-10-27 08:00:00'), (20, 104, 30, '2023-10-27 08:00:00');
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_HEADER 
+values
     (1006, 4, 103, '2023-10-28 14:00:00'), (1007, 5, 104, '2023-10-28 14:15:00'),
     (1008, 6, 105, '2023-10-28 15:30:00'), (1009, 7, 106, '2023-10-28 16:45:00'),
     (1010, 8, 107, '2023-10-28 17:00:00'), (1011, 9, 108, '2023-10-29 11:30:00'),
@@ -69,7 +74,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER values
     (1022, 20, 109, '2023-10-30 11:00:00'), (1023, 1, 110, '2023-10-30 11:30:00'),
     (1024, 2, 103, '2023-10-30 12:15:00'), (1025, 3, 104, '2023-10-30 13:00:00');
 
-insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL values
+insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL 
+values
     (1006, 7, 3), (1006, 15, 2), -- 3 Tacos, 2 Matcha
     (1007, 8, 1), (1007, 16, 1), -- Pizza & Wings
     (1008, 9, 1), (1008, 18, 1), -- Pad Thai & Kimchi Fries
@@ -79,19 +85,14 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL values
     (1012, 13, 3), (1012, 5, 3),  -- Sliders & Coffee
     (1013, 14, 2), (1013, 15, 2), -- Lava Cake & Matcha
     (1014, 1, 1), (1014, 6, 1),   -- Falafel & Chicken Gyro
-    (1015, 2, 2), (1015, 3, 2),   -- Burgers & Fries
-    (1016, 7, 4), (1017, 8, 2),
-    (1018, 9, 2), (1019, 10, 1),
-    (1020, 11, 2), (1021, 12, 1),
-    (1022, 13, 2), (1023, 14, 1),
-    (1024, 7, 2), (1025, 20, 1);
-
-
+    (1015, 2, 2), (1015, 3, 2);   -- Burgers & Fries
 
 
 
 -- ### Insert "Dirty" Data (Lowercase Cities) to demo quality expectations
--- insert into DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER values
+
+-- insert into DCM_DEMO_1{{env_suffix}}.RAW.CUSTOMER 
+-- values
 --     (5001, 'Yves', 'Laurent', 'london'),
 --     (5002, 'Pierre', 'Cardin', 'chicago'),
 --     (5003, 'Jean', 'Paul', 'austin'),
@@ -108,7 +109,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL values
 --     (5014, 'Louis', 'Vuitton', 'San Francisco'),
 --     (5015, 'Azzedine', 'Alaia', 'Austin');
 
--- insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER values
+-- insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_HEADER 
+-- values
 --     (5001, 5001, 101, CURRENT_TIMESTAMP()),
 --     (5002, 5002, 102, CURRENT_TIMESTAMP()),
 --     (5003, 5003, 103, CURRENT_TIMESTAMP()),
@@ -125,7 +127,8 @@ insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL values
 --     (5014, 5014, 104, CURRENT_TIMESTAMP()),
 --     (5015, 5015, 105, CURRENT_TIMESTAMP());
 
--- insert into DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL values
+-- insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL 
+-- values
 --     (5001, 1, 2),  
 --     (5002, 2, 1),
 --     (5003, 7, 3),  

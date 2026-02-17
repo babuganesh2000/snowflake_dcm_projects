@@ -1,12 +1,12 @@
-define database DCM_PROJECT_{{env_suffix}}
+define database DCM_DEMO_1{{env_suffix}}
     comment = 'This is a Quickstart Demo for DCM Projects Private Preview'
 ;
 
-define schema DCM_PROJECT_{{env_suffix}}.RAW
+define schema DCM_DEMO_1{{env_suffix}}.RAW
     comment = 'For Task copying sample data into landing tables';
 
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.ALL_ITEMS(
+define table DCM_DEMO_1{{env_suffix}}.RAW.ALL_ITEMS(
     ITEM_NAME varchar,
     ITEM_ID varchar,
     ITEM_CATEGORY array
@@ -14,7 +14,7 @@ define table DCM_PROJECT_{{env_suffix}}.RAW.ALL_ITEMS(
 change_tracking = TRUE;
 
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.ALL_REGIONS(
+define table DCM_DEMO_1{{env_suffix}}.RAW.ALL_REGIONS(
     REGION varchar,
     REGION_ID number,
     COUNTRY varchar,
@@ -24,7 +24,7 @@ define table DCM_PROJECT_{{env_suffix}}.RAW.ALL_REGIONS(
 change_tracking = TRUE;
 
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.INVENTORY(
+define table DCM_DEMO_1{{env_suffix}}.RAW.INVENTORY(
     ITEM_ID number,
     REGION_ID number,
     IN_STOCK number,
@@ -36,7 +36,7 @@ data_metric_schedule = 'TRIGGER_ON_CHANGES'
 
 
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.MENU (
+define table DCM_DEMO_1{{env_suffix}}.RAW.MENU (
     MENU_ITEM_ID NUMBER,
     MENU_ITEM_NAME VARCHAR,
     ITEM_CATEGORY VARCHAR,
@@ -45,14 +45,14 @@ define table DCM_PROJECT_{{env_suffix}}.RAW.MENU (
 )
 change_tracking = TRUE;
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.TRUCK (
+define table DCM_DEMO_1{{env_suffix}}.RAW.TRUCK (
     TRUCK_ID NUMBER,
     TRUCK_BRAND_NAME VARCHAR,
     MENU_TYPE VARCHAR
 )
 change_tracking = TRUE;
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER (
+define table DCM_DEMO_1{{env_suffix}}.RAW.CUSTOMER (
     CUSTOMER_ID NUMBER,
     FIRST_NAME VARCHAR,
     LAST_NAME VARCHAR,
@@ -60,7 +60,7 @@ define table DCM_PROJECT_{{env_suffix}}.RAW.CUSTOMER (
 )
 change_tracking = TRUE;
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER (
+define table DCM_DEMO_1{{env_suffix}}.RAW.ORDER_HEADER (
     ORDER_ID NUMBER,
     CUSTOMER_ID NUMBER,
     TRUCK_ID NUMBER,
@@ -69,7 +69,7 @@ define table DCM_PROJECT_{{env_suffix}}.RAW.ORDER_HEADER (
 change_tracking = TRUE
 ;
 
-define table DCM_PROJECT_{{env_suffix}}.RAW.ORDER_DETAIL (
+define table DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL (
     ORDER_ID NUMBER,
     MENU_ITEM_ID NUMBER,
     QUANTITY NUMBER

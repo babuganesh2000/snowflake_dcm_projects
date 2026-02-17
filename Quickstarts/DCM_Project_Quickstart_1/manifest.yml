@@ -8,29 +8,28 @@ type: DCM_PROJECT
 
 configurations:
   DEV:
-    env_suffix: "DEV"
+    env_suffix: "_DEV"
     wh_size: "X-SMALL"  
     user: "INSERT_YOUR_USER"
     project_owner_role: "DCM_DEVELOPER" 
     teams: 
-      - "DEV_TEAM_1"
-      - "DEV_TEAM_2"
+      - "TEAM_1"
+      - "TEAM_2"
 
     project_name: "DCM_DEMO.PROJECTS.DCM_PROJECT_DEV"   # only used for github actions
-
     
   STAGE:
-    env_suffix: "STG"
+    env_suffix: "_STG"
     wh_size: "X-SMALL"  
     user: "GITHUB_ACTIONS_SERVICE_USER"
     project_owner_role: "DCM_STAGE_DEPLOYER" 
     teams: 
       - "TEST_TEAM"
 
-    project_name: "DCM_DEMO.PROJECTS.DCM_PROJECT_STG"    # only used for github actions
+    project_name: "DCM_DEMO.PROJECTS.DCM_PROJECT_STG"   # only used for github actions
+
       
   PROD:
-    env_suffix: "PROD"
     wh_size: "LARGE"
     user: "GITHUB_ACTIONS_SERVICE_USER"
     project_owner_role: "DCM_PROD_DEPLOYER" 
