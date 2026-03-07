@@ -1,4 +1,4 @@
-name: ❄️ DCM - Test PR to main against STAGE and PROD
+name: ❄️ DCM 2) Test PR to main against STAGE and PROD
 
 on:
   pull_request:
@@ -15,19 +15,53 @@ env:
   SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER }}
   
 jobs:
+  PARSE_MANIFEST:
+    runs-on: ubuntu-latest
+    outputs:
+      stage_account: ${{ steps.get_targets.outputs.stage_account }}
+      stage_role: ${{ steps.get_targets.outputs.stage_role }}
+      stage_project_name: ${{ steps.get_targets.outputs.stage_project_name }}
+      prod_account: ${{ steps.get_targets.outputs.prod_account }}
+      prod_role: ${{ steps.get_targets.outputs.prod_role }}
+      prod_project_name: ${{ steps.get_targets.outputs.prod_project_name }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+
+    - name: Get targets from manifest
+      id: get_targets
+      run: |
+        MANIFEST_PATH="${{ env.DCM_PROJECT_PATH }}manifest.yml"
+        
+        echo "📂 Project path: \`$MANIFEST_PATH\`" >> $GITHUB_STEP_SUMMARY
+
+        echo "stage_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_account=$(yq eval '.targets.DCM_PROD_US.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_role=$(yq eval '.targets.DCM_PROD_US.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_project_name=$(yq eval '.targets.DCM_PROD_US.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+
+        for TARGET in DCM_STAGE DCM_PROD_US; do
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**${TARGET}:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Snowflake account: \`$(yq eval ".targets.$TARGET.account_identifier" "$MANIFEST_PATH")\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Project object: \`$(yq eval ".targets.$TARGET.project_name" "$MANIFEST_PATH")\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Project owner: \`$(yq eval ".targets.$TARGET.project_owner" "$MANIFEST_PATH")\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Templating Config: \`$(yq eval ".targets.$TARGET.templating_config" "$MANIFEST_PATH")\`" >> $GITHUB_STEP_SUMMARY
+        done
+
   STAGE_PLAN:
+    needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
     environment: DCM_STAGE
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
     steps:
     - name: Clone Repo
       uses: actions/checkout@v4
       
-    - name: Read manifest target DCM_STAGE
-      run: |
-        MANIFEST_PATH="${{ env.DCM_PROJECT_PATH }}manifest.yml"
-        echo "SNOWFLAKE_ACCOUNT=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_ENV
-        echo "SNOWFLAKE_ROLE=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_ENV
-                
     - name: Setup SnowCLI
       run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
       
@@ -39,14 +73,15 @@ jobs:
 
         mkdir -p summary
         
-        if snow dcm plan --target DCM_STAGE -x; then        
+        if snow dcm plan --target DCM_STAGE --save-output -x; then        
           echo "### ✅ DCM Plan to STAGE successful" >> $GITHUB_STEP_SUMMARY
           
-          PLAN_METADATA_FILE="out/plan_output/plan_metadata.json"
+          PLAN_METADATA_FILE="out/plan/plan_metadata.json"
           for OP_TYPE in CREATE ALTER DROP; do
+            case $OP_TYPE in CREATE) OP_ICON="🟢";; ALTER) OP_ICON="🟡";; DROP) OP_ICON="🔴";; esac
             OP_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" '.ddlChangeLog.operations[] | select(.operationType == $OP_TYPE)' "$PLAN_METADATA_FILE" | jq -s 'length')
             if [ "$OP_COUNT" -gt 0 ]; then
-              echo "**${OP_TYPE} operations: $OP_COUNT**" >> $GITHUB_STEP_SUMMARY
+              echo "**${OP_ICON} ${OP_TYPE} operations: $OP_COUNT**" >> $GITHUB_STEP_SUMMARY
               
               OBJECT_DOMAINS=$(jq -r --arg OP_TYPE "$OP_TYPE" '[.ddlChangeLog.operations[] | select(.operationType == $OP_TYPE) | .objectDomain // .association | select(. != null)] | unique | .[]' "$PLAN_METADATA_FILE")
               echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -63,7 +98,7 @@ jobs:
         else
           echo "### ❌ DCM Plan to STAGE failed" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          jq -r '.error' out/plan_output/plan_metadata.json >> $GITHUB_STEP_SUMMARY
+          jq -r '.error' out/plan/plan_metadata.json >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           
           cp $GITHUB_STEP_SUMMARY summary/stage-plan-summary.md
@@ -75,7 +110,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: stage-plan-output
-        path: ${{ env.DCM_PROJECT_PATH }}out/plan_output/plan_metadata.json
+        path: ${{ env.DCM_PROJECT_PATH }}out/plan/plan_metadata.json
 
     - name: Upload STAGE PLAN Summary
       if: always()
@@ -86,18 +121,16 @@ jobs:
 
         
   PROD_PLAN:
+    needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
     environment: DCM_PROD_US
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
     steps:
     - name: Clone Repo
       uses: actions/checkout@v4
 
-    - name: Read manifest target DCM_PROD_US
-      run: |
-        MANIFEST_PATH="${{ env.DCM_PROJECT_PATH }}manifest.yml"
-        echo "SNOWFLAKE_ACCOUNT=$(yq eval '.targets.DCM_PROD_US.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_ENV
-        echo "SNOWFLAKE_ROLE=$(yq eval '.targets.DCM_PROD_US.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_ENV
-        
     - name: Setup SnowCLI
       run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
         
@@ -109,14 +142,15 @@ jobs:
 
         mkdir -p summary
         
-        if snow dcm plan --target DCM_PROD_US -x; then        
+        if snow dcm plan --target DCM_PROD_US --save-output -x; then        
           echo "### ✅ DCM Plan to PROD successful" >> $GITHUB_STEP_SUMMARY
           
-          PLAN_METADATA_FILE="out/plan_output/plan_metadata.json"
+          PLAN_METADATA_FILE="out/plan/plan_metadata.json"
           for OP_TYPE in CREATE ALTER DROP; do
-            OP_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" '(.ddlChangeLog.operations[] | select(.operationType == $OP_TYPE)) | length' "$PLAN_METADATA_FILE" | wc -l)
+            case $OP_TYPE in CREATE) OP_ICON="🟢";; ALTER) OP_ICON="🟡";; DROP) OP_ICON="🔴";; esac
+            OP_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" '.ddlChangeLog.operations[] | select(.operationType == $OP_TYPE)' "$PLAN_METADATA_FILE" | jq -s 'length')
             if [ "$OP_COUNT" -gt 0 ]; then
-              echo "**${OP_TYPE} operations: $OP_COUNT**" >> $GITHUB_STEP_SUMMARY
+              echo "**${OP_ICON} ${OP_TYPE} operations: $OP_COUNT**" >> $GITHUB_STEP_SUMMARY
               
               OBJECT_DOMAINS=$(jq -r --arg OP_TYPE "$OP_TYPE" '[.ddlChangeLog.operations[] | select(.operationType == $OP_TYPE) | .objectDomain // .association | select(. != null)] | unique | .[]' "$PLAN_METADATA_FILE")
               echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -133,7 +167,7 @@ jobs:
         else
           echo "### ❌ DCM Plan to PROD failed" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          jq -r '.error' out/plan_output/plan_metadata.json >> $GITHUB_STEP_SUMMARY
+          jq -r '.error' out/plan/plan_metadata.json >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           
           cp $GITHUB_STEP_SUMMARY summary/prod-plan-summary.md
@@ -145,7 +179,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: prod-plan-output
-        path: ${{ env.DCM_PROJECT_PATH }}out/plan_output/plan_metadata.json
+        path: ${{ env.DCM_PROJECT_PATH }}out/plan/plan_metadata.json
 
     - name: Upload PROD PLAN Summary
       if: always()

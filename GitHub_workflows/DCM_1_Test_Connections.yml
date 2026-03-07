@@ -1,4 +1,4 @@
-name: ❄️ DCM - Read manifest and test connections to all targets
+name: ❄️ DCM 1) Read manifest and test connections to all targets
 
 on:
   workflow_dispatch:
@@ -67,7 +67,7 @@ jobs:
         echo "SNOWFLAKE_ACCOUNT=$DCM_ACCOUNT" >> $GITHUB_ENV
         echo "SNOWFLAKE_ROLE=$DCM_OWNER_ROLE" >> $GITHUB_ENV
         
-    - name: Test Connection to ${{ matrix.target }}
+    - name: 1. Test Connection to ${{ matrix.target }}
       env:
         SNOWFLAKE_PASSWORD: ${{ secrets.DEPLOYER_PAT }}
         SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER }}
@@ -99,35 +99,46 @@ jobs:
           echo "DCM Project:    $DCM_PROJECT_NAME"
           echo "\`\`\`"
         } >> $GITHUB_STEP_SUMMARY  
-        
-        echo "🔍 Checking role privileges on $DCM_PROJECT_NAME" >> $GITHUB_STEP_SUMMARY
+
+        echo "CONNECTION_ROLE=$CONNECTION_ROLE" >> $GITHUB_ENV
+
+    - name: 2. Validate Role Match
+      run: |
+        if [ "$CONNECTION_ROLE" = "$SNOWFLAKE_ROLE" ]; then
+          echo "### ✅ Role match: connection role \`$CONNECTION_ROLE\` matches manifest project_owner \`$SNOWFLAKE_ROLE\`" >> $GITHUB_STEP_SUMMARY
+        else
+          {
+            echo "### ❌ Role mismatch!"
+            echo "- Connection role: \`$CONNECTION_ROLE\`"
+            echo "- Manifest project_owner: \`$SNOWFLAKE_ROLE\`"
+            echo ""
+            echo "The deployer's role does not match the manifest project_owner. Deployments will fail."
+          } >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+
+    - name: 3. Validate DCM Project Status
+      env:
+        SNOWFLAKE_PASSWORD: ${{ secrets.DEPLOYER_PAT }}
+        SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER }}
+        TARGET_NAME: ${{ matrix.target }}
+      run: |
         cd ./$DCM_PROJECT_PATH
         if snow dcm describe --target $TARGET_NAME -x --format json > dcm_output.json 2>&1; then
-        
           DCM_OWNER_ROLE=$(jq -r '.[0].owner' dcm_output.json)
 
           if [ "$CONNECTION_ROLE" = "$DCM_OWNER_ROLE" ]; then
-            {
-              echo "\`\`\`"
-              echo "✅ User role can deploy as it is also project owner."
-              echo "\`\`\`"
-            } >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ Project \`$DCM_PROJECT_NAME\` exists and is owned by \`$DCM_OWNER_ROLE\`" >> $GITHUB_STEP_SUMMARY
           else
             {
-              echo "\`\`\`"
-              echo "⚠️ Role mismatch!"
-              echo "- **User role**: $CONNECTION_ROLE"
-              echo "- **DCM owner role**: $DCM_OWNER_ROLE"
-              echo ""
-              echo "The current connection can not deploy as it is not the DCM project owner."
-              echo "\`\`\`"
+              echo "### ❌ Project \`$DCM_PROJECT_NAME\` exists but is owned by \`$DCM_OWNER_ROLE\`, not \`$CONNECTION_ROLE\`"
+              echo "The connection role cannot deploy to this project because it is not the owner."
             } >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
-          
         else
           {
-            echo "\`\`\`"
-            echo "⚠️ Project does not yet exist or User role does not have any privileges on DCM project:  $DCM_PROJECT_NAME"
-            echo "\`\`\`"
+            echo "### 🟡 Project \`$DCM_PROJECT_NAME\` does not yet exist"
+            echo "It will be created on first deployment with \`snow dcm create\`."
           } >> $GITHUB_STEP_SUMMARY
         fi
