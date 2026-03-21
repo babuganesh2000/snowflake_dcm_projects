@@ -1,0 +1,193 @@
+# Snowflake DCM Test Connection Action
+#
+# Tests the Snowflake connection for a DCM target, validates that the
+# connection role matches the manifest project_owner, and checks if the
+# DCM project already exists.
+#
+# Prerequisites:
+#   The calling workflow MUST set these permissions:
+#
+#     permissions:
+#       id-token: write
+#       contents: read
+#
+#   The job MUST use a GitHub Environment whose name matches the target.
+#
+# Example usage:
+#
+#   jobs:
+#     test:
+#       runs-on: ubuntu-latest
+#       environment: DCM_STAGE
+#       permissions:
+#         id-token: write
+#         contents: read
+#       steps:
+#         - uses: actions/checkout@v4
+#         - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-connection-test@v1
+#           with:
+#             target: DCM_STAGE
+#             project-path: Quickstarts/DCM_Project_Quickstart_1/
+
+name: "Snowflake DCM Test Connection"
+description: "Test Snowflake connection for a DCM target, validate role match, and check project status."
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  target:
+    description: "DCM target name from manifest.yml (e.g. DCM_STAGE, DCM_PROD_US)"
+    required: true
+  project-path:
+    description: "Path to the DCM project directory (containing manifest.yml)"
+    required: true
+
+outputs:
+  result:
+    description: "'success' or 'failure'"
+    value: ${{ steps.summary.outputs.result }}
+  connection-account:
+    description: "The Snowflake account from the connection test"
+    value: ${{ steps.test_connection.outputs.connection-account }}
+  connection-role:
+    description: "The role used by the connection"
+    value: ${{ steps.test_connection.outputs.connection-role }}
+  project-exists:
+    description: "'true' or 'false' — whether the DCM project already exists"
+    value: ${{ steps.check_project.outputs.project-exists }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Snowflake CLI
+      uses: snowflakedb/snowflake-cli-action@v2.0
+      with:
+        use-oidc: true
+
+    - name: Read manifest target
+      id: read_manifest
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        TARGET_NAME="${{ inputs.target }}"
+        MANIFEST_PATH="manifest.yml"
+
+        DCM_PROJECT_NAME=$(yq eval ".targets.$TARGET_NAME.project_name" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")
+        DCM_ACCOUNT=$(yq eval ".targets.$TARGET_NAME.account_identifier" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")
+        DCM_OWNER_ROLE=$(yq eval ".targets.$TARGET_NAME.project_owner" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")
+
+        echo "project-name=$DCM_PROJECT_NAME" >> "$GITHUB_OUTPUT"
+        echo "manifest-account=$DCM_ACCOUNT" >> "$GITHUB_OUTPUT"
+        echo "manifest-role=$DCM_OWNER_ROLE" >> "$GITHUB_OUTPUT"
+
+    - name: Test connection
+      id: test_connection
+      shell: bash
+      run: |
+        TARGET_NAME="${{ inputs.target }}"
+
+        if ! snow connection test -x --format json > connection_output.json 2>&1; then
+          {
+            echo "### ❌ Connection to ${TARGET_NAME} failed!"
+            echo '```'
+            cat connection_output.json 2>/dev/null || echo "No output captured"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "connection-account=" >> "$GITHUB_OUTPUT"
+          echo "connection-role=" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+        CONNECTION_ACCOUNT=$(jq -r '.Account' connection_output.json)
+        CONNECTION_USER=$(jq -r '.User' connection_output.json)
+        CONNECTION_ROLE=$(jq -r '.Role' connection_output.json)
+
+        echo "connection-account=$CONNECTION_ACCOUNT" >> "$GITHUB_OUTPUT"
+        echo "connection-role=$CONNECTION_ROLE" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### ✅ Connection to ${TARGET_NAME} successful!"
+          echo '```'
+          echo "Target account: $CONNECTION_ACCOUNT"
+          echo "User name:      $CONNECTION_USER"
+          echo "User Role:      $CONNECTION_ROLE"
+          echo "Manifest Role:  ${{ steps.read_manifest.outputs.manifest-role }}"
+          echo "DCM Project:    ${{ steps.read_manifest.outputs.project-name }}"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Validate role match
+      id: validate_role
+      shell: bash
+      run: |
+        CONNECTION_ROLE="${{ steps.test_connection.outputs.connection-role }}"
+        MANIFEST_ROLE="${{ steps.read_manifest.outputs.manifest-role }}"
+
+        if [ "$CONNECTION_ROLE" = "$MANIFEST_ROLE" ]; then
+          echo "✅ **Role match: connection role \`$CONNECTION_ROLE\` matches manifest project_owner \`$MANIFEST_ROLE\`**" >> "$GITHUB_STEP_SUMMARY"
+        else
+          {
+            echo "❌ **Role mismatch!**"
+            echo "- Connection role: \`$CONNECTION_ROLE\`"
+            echo "- Manifest project_owner: \`$MANIFEST_ROLE\`"
+            echo ""
+            echo "The deployer's role does not match the manifest project_owner. Deployments will fail."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+
+    - name: Check DCM project status
+      id: check_project
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        TARGET_NAME="${{ inputs.target }}"
+        CONNECTION_ROLE="${{ steps.test_connection.outputs.connection-role }}"
+        DCM_PROJECT_NAME="${{ steps.read_manifest.outputs.project-name }}"
+
+        if snow dcm describe --target "$TARGET_NAME" -x --format json > dcm_output.json 2>&1; then
+          DCM_OWNER_ROLE=$(jq -r '.[0].owner' dcm_output.json)
+          echo "project-exists=true" >> "$GITHUB_OUTPUT"
+
+          if [ "$CONNECTION_ROLE" = "$DCM_OWNER_ROLE" ]; then
+            echo "✅ **Project \`$DCM_PROJECT_NAME\` exists and is owned by \`$DCM_OWNER_ROLE\`.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "❌ **Project \`$DCM_PROJECT_NAME\` exists but is owned by \`$DCM_OWNER_ROLE\`, not \`$CONNECTION_ROLE\`.**"
+              echo "The connection role cannot deploy to this project because it is not the owner."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+        else
+          echo "project-exists=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "🟡 **Project \`$DCM_PROJECT_NAME\` does not yet exist.**"
+            echo "It will be created on first deployment with \`snow dcm create\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Set final result
+      id: summary
+      if: always()
+      shell: bash
+      run: |
+        TARGET="${{ inputs.target }}"
+        if [ "${{ steps.test_connection.outcome }}" = "success" ] && \
+           [ "${{ steps.validate_role.outcome }}" = "success" ] && \
+           [ "${{ steps.check_project.outcome }}" = "success" ]; then
+          echo "result=success" >> "$GITHUB_OUTPUT"
+          RESULT="success"
+        else
+          echo "result=failure" >> "$GITHUB_OUTPUT"
+          RESULT="failure"
+        fi
+        mkdir -p /tmp/dcm-results
+        echo "$RESULT" > "/tmp/dcm-results/dcm-connection-${TARGET}.txt"
+
+    - name: Upload result artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dcm-connection-${{ inputs.target }}
+        path: /tmp/dcm-results/dcm-connection-${{ inputs.target }}.txt
