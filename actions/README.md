@@ -1,6 +1,6 @@
 # Snowflake DCM GitHub Actions
 
-> **EXPERIMENTAL** -- These actions are provided as-is for evaluation purposes.
+> ⚠️ These actions are provided as-is for evaluation purposes.
 > They are not officially supported by Snowflake.
 > Breaking changes may occur at any time.
 > Use at your own risk.
