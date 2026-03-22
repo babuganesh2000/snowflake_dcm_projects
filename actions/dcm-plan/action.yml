@@ -50,6 +50,9 @@ inputs:
   project-path:
     description: "Path to the DCM project directory (containing manifest.yml)"
     required: true
+  snowflake-user:
+    description: "Snowflake username for OIDC authentication"
+    required: true
   create-if-not-exists:
     description: "Run snow dcm create --if-not-exists before planning"
     required: false
@@ -84,12 +87,34 @@ runs:
       with:
         use-oidc: true
 
+    - name: Set connection env vars
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        TARGET_NAME="${{ inputs.target }}"
+        MANIFEST_PATH="manifest.yml"
+
+        DCM_ACCOUNT=$(yq eval ".targets.$TARGET_NAME.account_identifier" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")
+        DCM_OWNER_ROLE=$(yq eval ".targets.$TARGET_NAME.project_owner" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")
+
+        echo "SNOWFLAKE_ACCOUNT=$DCM_ACCOUNT" >> "$GITHUB_ENV"
+        echo "SNOWFLAKE_ROLE=$DCM_OWNER_ROLE" >> "$GITHUB_ENV"
+        echo "SNOWFLAKE_USER=${{ inputs.snowflake-user }}" >> "$GITHUB_ENV"
+
     - name: DCM Plan
       id: plan
       shell: bash
       working-directory: ${{ inputs.project-path }}
       run: |
         TARGET="${{ inputs.target }}"
+        SUMMARY_FILE="/tmp/dcm-plan-summary.md"
+        : > "$SUMMARY_FILE"
+
+        # Helper: write to both step summary and our file
+        write_summary() {
+          echo "$1" >> "$GITHUB_STEP_SUMMARY"
+          echo "$1" >> "$SUMMARY_FILE"
+        }
 
         # Optionally create the project if it doesn't exist
         if [ "${{ inputs.create-if-not-exists }}" = "true" ]; then
@@ -101,7 +126,7 @@ runs:
         # Run the plan
         if snow dcm plan --target "$TARGET" --save-output -x; then
           echo "result=success" >> "$GITHUB_OUTPUT"
-          echo "### ✅ DCM Plan to ${TARGET} successful" >> "$GITHUB_STEP_SUMMARY"
+          write_summary "### ✅ DCM Plan to ${TARGET} successful"
 
           # Summarize changeset by operation type
           for OP_TYPE in CREATE ALTER DROP; do
@@ -115,7 +140,7 @@ runs:
               '[.changeset[] | select(.type == $OP_TYPE)] | length' \
               "$PLAN_METADATA_FILE")
 
-            echo "**${OP_ICON} ${OP_TYPE} operations: ${OP_COUNT}**" >> "$GITHUB_STEP_SUMMARY"
+            write_summary "**${OP_ICON} ${OP_TYPE} operations: ${OP_COUNT}**"
             echo "${OP_TYPE,,}-count=${OP_COUNT}" >> "$GITHUB_OUTPUT"
 
             if [ "$OP_COUNT" -gt 0 ]; then
@@ -123,14 +148,14 @@ runs:
                 '[.changeset[] | select(.type == $OP_TYPE) | .object_id.domain] | unique | .[]' \
                 "$PLAN_METADATA_FILE")
 
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              write_summary '```'
               for DOMAIN in $OBJECT_DOMAINS; do
                 DOMAIN_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" --arg DOMAIN "$DOMAIN" \
                   '[.changeset[] | select(.type == $OP_TYPE and .object_id.domain == $DOMAIN)] | length' \
                   "$PLAN_METADATA_FILE")
-                echo "- ${DOMAIN}: ${DOMAIN_COUNT}" >> "$GITHUB_STEP_SUMMARY"
+                write_summary "- ${DOMAIN}: ${DOMAIN_COUNT}"
               done
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              write_summary '```'
             fi
           done
 
@@ -140,29 +165,21 @@ runs:
           echo "alter-count=0" >> "$GITHUB_OUTPUT"
           echo "drop-count=0" >> "$GITHUB_OUTPUT"
 
-          {
-            echo "### ❌ DCM Plan to ${TARGET} failed"
-            echo '```'
-            if [ -f "$PLAN_METADATA_FILE" ]; then
-              jq -r '.errors[].message // empty' "$PLAN_METADATA_FILE" 2>/dev/null \
-                || cat "$PLAN_METADATA_FILE"
-            else
-              echo "No plan output file found."
-            fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          write_summary "### ❌ DCM Plan to ${TARGET} failed"
+          write_summary '```'
+          if [ -f "$PLAN_METADATA_FILE" ]; then
+            ERROR_MSG=$(jq -r '.errors[].message // empty' "$PLAN_METADATA_FILE" 2>/dev/null || cat "$PLAN_METADATA_FILE")
+          else
+            ERROR_MSG="No plan output file found."
+          fi
+          write_summary "$ERROR_MSG"
+          write_summary '```'
 
           echo "plan-file=" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
         echo "plan-file=${{ inputs.project-path }}out/plan/plan_result.json" >> "$GITHUB_OUTPUT"
-
-    - name: Save plan summary
-      if: always()
-      id: save_summary
-      shell: bash
-      run: cp "$GITHUB_STEP_SUMMARY" /tmp/dcm-plan-summary.md
 
     - name: Write result artifact
       if: always()
@@ -205,7 +222,7 @@ runs:
             prNumber = prs[0].number;
           }
 
-          let body = '### ❄️ DCM Plan — ${{ inputs.target }}\n\n';
+          let body = '';
           try {
             body += fs.readFileSync('/tmp/dcm-plan-summary.md', 'utf8');
           } catch {

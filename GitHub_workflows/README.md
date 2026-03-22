@@ -1,23 +1,27 @@
-# DCM Project - GitHub Actions Workflows
+# DCM Project - Sample GitHub Actions Workflows
 
-These workflows automate the full lifecycle of a [Snowflake DCM (Database Change Management) Project](https://docs.snowflake.com/en/LIMITEDACCESS/dcm-projects/snowflake-dcm-projects) using GitHub Actions. They cover connection testing, PR validation, deployment with safety gates, and data quality testing.
+These are **sample workflows** that demonstrate how to use the [reusable DCM GitHub Actions](../actions/README.md) to automate the full lifecycle of a [Snowflake DCM (Database Change Management) Project](https://docs.snowflake.com/en/user-guide/dcm-projects/dcm-projects-overview).
+
+You can copy these workflows into your repository's `.github/workflows/` directory and customize them for your project. You can also build your own workflows using the individual actions directly — see the [Actions README](../actions/README.md) for full documentation of each action.
 
 ## Prerequisites
 
-- A Snowflake account that is enrolled in the preview of Snowflake DCM Projects
+- A Snowflake account that is enrolled in the public preview of Snowflake DCM Projects
 - A DCM project with a valid `manifest.yml` containing at least one target
-- A Snowflake service user with credentials for each target account (see [Authentication](#4-set-repository-secrets) below)
+- A Snowflake service user configured for authentication (see [Authentication](#4-configure-authentication) below)
 
 ## How the Workflows Work Together
+
+Each workflow is composed from the reusable actions in [`actions/`](../actions/). The actions handle Snowflake CLI setup, OIDC authentication, manifest parsing, and all DCM commands internally.
 
 | # | Workflow | Trigger | Purpose |
 |---|---------|---------|---------|
 | 1 | **Test Connections** | Manual | Validates connectivity and role configuration for all manifest targets |
-| 2 | **Test PR to main** | PR to `main` / Manual | Runs `snow dcm plan` against STAGE and PROD in parallel, posts results as a PR comment |
-| 3 | **Deploy to STAGE & PROD** | Push to `main` / Manual | Full sequential pipeline: Plan → Data Drop Detection → Deploy → Post Scripts → Refresh DTs → Test Expectations (STAGE first, then PROD) |
-| 4 | **Test STAGE Expectations** | Manual | Refreshes dynamic tables and runs data quality expectations on STAGE |
+| 2 | **Test PR to main** | PR to `main` | Runs `snow dcm plan` against PROD and optionally posts results as a PR comment |
+| 3 | **Deploy to PROD** | Push to `main` | Plan and deploy to PROD with optional drop detection, post-scripts, Dynamic Tables refresh, and data expectation testing |
+| 4 | **Deploy to STAGE then PROD** | Push to `main` | Full sequential pipeline: STAGE first (plan, deploy, test), then PROD (plan, deploy, test) |
 
-**Typical flow:** Run **Workflow 1** once to validate your setup. Then use the PR-based flow: open a PR (triggers **Workflow 2** for plan preview), merge to main (triggers **Workflow 3** for deployment). Use **Workflow 4** for ad-hoc data quality testing.
+**Typical flow:** Run **Workflow 1** once to validate your setup. Then use the PR-based flow: open a PR (triggers **Workflow 2** for plan preview), merge to main (triggers **Workflow 3** or **4** for deployment). Choose Workflow 3 if you deploy to PROD only, or Workflow 4 if you want a STAGE-then-PROD pipeline.
 
 ## Setup
 
@@ -47,7 +51,7 @@ The target names (`DCM_STAGE`, `DCM_PROD_US`) must exactly match the GitHub envi
 
 ### 2. Create GitHub Environments
 
-Go to **Settings → Environments** in your GitHub repository and create one environment per manifest target.
+Go to **Settings > Environments** in your GitHub repository and create one environment per manifest target.
 
 For the default configuration, create:
 
@@ -60,7 +64,7 @@ For the default configuration, create:
 
 ### 3. Set Repository Variables
 
-Go to **Settings → Secrets and variables → Actions → Variables** and create:
+Go to **Settings > Secrets and variables > Actions > Variables** and create:
 
 | Variable | Value | Example |
 |----------|-------|---------|
@@ -69,36 +73,48 @@ Go to **Settings → Secrets and variables → Actions → Variables** and creat
 
 These are **repository-level** variables, shared across all environments. If you need different users per environment, move `SNOWFLAKE_USER` to an environment-level variable instead.
 
-### 4. Set Repository Secrets
+### 4. Configure Authentication
 
-Go to **Settings → Secrets and variables → Actions → Secrets**.
+The actions authenticate using the [Snowflake CLI GitHub Action](https://github.com/snowflakedb/snowflake-cli-action) (`snowflakedb/snowflake-cli-action@v2.0`). **OIDC is the recommended and default approach** — the actions call the CLI action with `use-oidc: true` internally.
 
-The workflows authenticate using environment variables that the Snowflake CLI picks up automatically. Out of the box, they use **password-based authentication** (programmatic access token). You can also use **key-pair authentication** — see both options below.
+#### OIDC (recommended — used by default)
 
-#### Option A: Password / Programmatic Access Token (default)
+With OIDC, GitHub's identity tokens authenticate directly with Snowflake. No passwords or private keys need to be stored as secrets.
+
+To use OIDC:
+
+1. Create a Snowflake service user and configure a security integration that trusts GitHub's OIDC provider
+2. Grant your workflow `id-token: write` permission (already set in the sample workflows)
+3. Set `SNOWFLAKE_USER` as a repository variable (step 3 above)
+
+No secrets are required — the GitHub environment's OIDC token handles authentication automatically.
+
+<!-- TODO: Link to detailed OIDC setup guide -->
+
+#### Alternative: PAT / Password
+
+If you cannot use OIDC, you can authenticate with a programmatic access token. Create a repository secret:
 
 | Secret | Value |
 |--------|-------|
 | `DEPLOYER_PAT` | The programmatic access token (password) for `SNOWFLAKE_USER` |
 
-This is what the workflows use as shipped. No other changes needed.
-
-#### Option B: Key-Pair Authentication
-
-If you prefer key-pair auth, create these secrets instead:
-
-| Secret | Value |
-|--------|-------|
-| `SNOWFLAKE_PRIVATE_KEY_RAW` | The full PEM-encoded private key content (not a file path) |
-
-Then update the `env` block in each workflow file — replace:
+Then add an `env` block to each workflow (or to individual jobs):
 
 ```yaml
 env:
   SNOWFLAKE_PASSWORD: ${{ secrets.DEPLOYER_PAT }}
 ```
 
-with:
+#### Alternative: Key-Pair Authentication
+
+Create a repository secret:
+
+| Secret | Value |
+|--------|-------|
+| `SNOWFLAKE_PRIVATE_KEY_RAW` | The full PEM-encoded private key content (not a file path) |
+
+Then add an `env` block to each workflow:
 
 ```yaml
 env:
@@ -106,19 +122,17 @@ env:
   SNOWFLAKE_AUTHENTICATOR: SNOWFLAKE_JWT
 ```
 
-> **Note:** `SNOWFLAKE_PRIVATE_KEY_RAW` is recommended over `SNOWFLAKE_PRIVATE_KEY_FILE` for CI/CD because GitHub Actions runners don't have persistent local file storage.
-
-If your STAGE and PROD accounts use different credentials, create secrets as **environment-level secrets** on each environment instead of repository-level secrets.
+> **Note:** If your STAGE and PROD accounts use different credentials, create secrets as **environment-level secrets** on each environment instead of repository-level secrets.
 
 ### 5. Set Workflow Permissions
 
-Go to **Settings → Actions → General → Workflow permissions** and ensure:
+Go to **Settings > Actions > General > Workflow permissions** and ensure:
 
-- **Read and write permissions** is selected (required for Workflows 2 and 3 to post PR comments)
+- **Read and write permissions** is selected (required for Workflows 2, 3, and 4 to post PR comments)
 
 ### 6. Configure Path Filters (if needed)
 
-Workflows 2 and 3 filter on file changes under `Quickstarts/**`. Update the `paths` filter in both workflow files to match your project structure:
+Workflows 2, 3, and 4 filter on file changes under `Quickstarts/**`. Update the `paths` filter in each workflow file to match your project structure:
 
 ```yaml
 on:
@@ -130,15 +144,16 @@ on:
 
 ## Environment Variable Flow
 
-The workflows use a consistent pattern to authenticate with Snowflake. Understanding this flow helps with debugging:
+The actions use a consistent pattern to authenticate with Snowflake. Understanding this flow helps with debugging:
 
-1. **`DCM_PROJECT_PATH`** (repo variable) → locates `manifest.yml` in the repository
-2. **`manifest.yml`** is parsed with `yq` to extract `account_identifier`, `project_owner`, and `project_name` for each target
-3. These values are passed as job outputs and set as environment variables:
-   - `SNOWFLAKE_ACCOUNT` ← from `account_identifier`
-   - `SNOWFLAKE_ROLE` ← from `project_owner`
-4. **`SNOWFLAKE_USER`** (repo variable) and the authentication secret (`SNOWFLAKE_PASSWORD` or `SNOWFLAKE_PRIVATE_KEY_RAW`) complete the connection
-5. The Snowflake CLI picks up all `SNOWFLAKE_*` environment variables automatically — no `connections.toml` file is needed
+1. **`DCM_PROJECT_PATH`** (repo variable) locates `manifest.yml` in the repository
+2. **`manifest.yml`** is parsed to extract `account_identifier`, `project_owner`, and `project_name` for each target
+3. These values are set as environment variables inside the action:
+   - `SNOWFLAKE_ACCOUNT` -- from `account_identifier`
+   - `SNOWFLAKE_ROLE` -- from `project_owner`
+4. **`SNOWFLAKE_USER`** (repo variable) is passed to the action via the `snowflake-user` input
+5. **Authentication** is handled by the Snowflake CLI action. With OIDC (default), the GitHub environment's identity token is used. With PAT or key-pair, the corresponding `SNOWFLAKE_PASSWORD` or `SNOWFLAKE_PRIVATE_KEY_RAW` environment variable is picked up from your workflow's `env` block.
+6. The Snowflake CLI picks up all `SNOWFLAKE_*` environment variables automatically — no `connections.toml` file is needed
 
 ## Customizing for Your Project
 
@@ -147,18 +162,18 @@ The workflows use a consistent pattern to authenticate with Snowflake. Understan
 If your manifest uses different target names (e.g. `STAGING`, `PRODUCTION`), you need to:
 
 1. Create GitHub environments with matching names
-2. Update the hardcoded target references in Workflows 2–4 (search for `DCM_STAGE` and `DCM_PROD_US`)
+2. Update the hardcoded target references in Workflows 2-4 (search for `DCM_STAGE` and `DCM_PROD_US`)
 
 Workflow 1 is fully dynamic — it reads all targets from the manifest automatically.
 
 ### Single-target deployment
 
-To deploy to only one environment, remove the PROD jobs from Workflows 2 and 3, and adjust the `needs` dependencies accordingly.
+To deploy to only one environment, use Workflow 3 as a starting point (it targets PROD only). Adjust the target name and environment as needed.
 
 ### Post-hook scripts
 
-Workflow 3 executes `hooks/post_hook.sql` after each deployment using Jinja templating. The `env_suffix` variable is passed to differentiate environments (`STG` for STAGE, `PROD` for production). If you don't use post-hooks, those jobs will simply report "No post-hook files found."
+Workflows 3 and 4 execute SQL files from a `post-scripts-path` directory after each deployment using Jinja templating. Manifest templating variables are passed automatically. If you don't use post-scripts, those steps will simply report "No .sql files found."
 
 ### Data drop detection
 
-Workflow 3 includes a safety gate that blocks deployment if the plan contains DROP operations on databases, schemas, tables, or stages. This protects against accidental data loss. If a DROP is intentional, you'll need to temporarily adjust the detection logic or manually approve the workflow run.
+Workflows 3 and 4 include a safety gate that blocks deployment if the plan contains DROP operations on databases, schemas, tables, or stages. This protects against accidental data loss. Set `allow-drops: "true"` on the `dcm-deploy` action to bypass this check when a DROP is intentional.

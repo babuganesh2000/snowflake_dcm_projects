@@ -1,8 +1,7 @@
-name: "DCM 2) Test PR to main"
+name: "DCM 3) Deploy to PROD"
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
     branches: ["main"]
     paths:
       - 'Quickstarts/**'
@@ -18,7 +17,7 @@ env:
   DCM_PROJECT_PATH: Quickstarts/DCM_Project_Quickstart_1/
 
 jobs:
-  PLAN_PROD:
+  PROD:
     runs-on: ubuntu-latest
     environment: DCM_PROD_US
     steps:
@@ -32,4 +31,15 @@ jobs:
           target: DCM_PROD_US
           project-path: ${{ env.DCM_PROJECT_PATH }}
           snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          comment-on-pr: "true"
+
+      - uses: ./actions/dcm-deploy
+        id: deploy
+        with:
+          target: DCM_PROD_US
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          allow-drops: "false"
+          test-expectations: "true"
+          post-scripts-path: "SQL_post_scripts"
           comment-on-pr: "true"

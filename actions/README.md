@@ -5,22 +5,48 @@
 > Breaking changes may occur at any time.
 > Use at your own risk.
 
-A set of composable GitHub Actions for automating [Snowflake DCM Projects](https://docs.snowflake.com/en/user-guide/dcm-projects/dcm-projects-overview) pipelines. Each action handles one step of the lifecycle, and they can be combined to build end-to-end CI/CD workflows.
+A set of **reusable composite GitHub Actions** for automating [Snowflake DCM Projects](https://docs.snowflake.com/en/user-guide/dcm-projects/dcm-projects-overview) pipelines. Each action handles one step of the lifecycle, and you can reference them from your own workflows to build end-to-end CI/CD pipelines.
+
+To use an action in your workflow, reference it with:
+
+```yaml
+- uses: Snowflake-Labs/snowflake_dcm_projects/actions/<action-name>@v1
+```
+
+For complete, ready-to-use workflow examples that compose these actions, see the [Sample Workflows](../GitHub_workflows/README.md).
 
 ## Actions
 
 | Action | Description |
 |--------|-------------|
+| [`dcm-parse-manifest`](#dcm-parse-manifest) | Parse `manifest.yml` and output target names as a JSON array for matrix strategies |
 | [`dcm-connection-test`](#dcm-connection-test) | Test Snowflake connectivity, validate role match, check project status |
 | [`dcm-plan`](#dcm-plan) | Run `snow dcm plan`, summarize the changeset, upload artifacts |
 | [`dcm-deploy`](#dcm-deploy) | Deploy with optional drop detection, DT refresh, and expectation testing |
+
+## Authentication
+
+All actions authenticate to Snowflake using the [`snowflakedb/snowflake-cli-action@v2.0`](https://github.com/snowflakedb/snowflake-cli-action) with **OIDC** (OpenID Connect) enabled. Each action calls this internally — you do not need to add a separate authentication step in your workflow.
+
+**OIDC is the recommended approach.** It uses GitHub's built-in identity tokens so no passwords or private keys need to be stored as secrets. To use OIDC:
+
+1. Create a Snowflake service user and configure a security integration that trusts GitHub's OIDC provider
+2. Create a GitHub Environment for each DCM target (e.g. `DCM_STAGE`, `DCM_PROD_US`)
+3. Set the `SNOWFLAKE_USER` repository variable to the service user name
+4. Grant the workflow `id-token: write` permission
+
+<!-- TODO: Link to detailed OIDC setup guide -->
+
+**PAT and key-pair authentication** are also supported. If you cannot use OIDC, set the appropriate environment variables in your workflow before calling the actions:
+
+- **PAT / Password:** Set `SNOWFLAKE_PASSWORD` in your workflow `env` block (sourced from a secret)
+- **Key-pair:** Set `SNOWFLAKE_PRIVATE_KEY_RAW` and `SNOWFLAKE_AUTHENTICATOR: SNOWFLAKE_JWT` in your workflow `env` block
 
 ## Prerequisites
 
 All actions require:
 
-- **OIDC authentication** via `snowflakedb/snowflake-cli-action@v2.0` (handled internally)
-- **GitHub Environment** matching the DCM target name (e.g. `DCM_STAGE`, `DCM_PROD_US`)
+- A **GitHub Environment** matching the DCM target name (e.g. `DCM_STAGE`, `DCM_PROD_US`)
 - **Workflow permissions**:
 
 ```yaml
@@ -40,6 +66,58 @@ permissions:
 
 ---
 
+## dcm-parse-manifest
+
+Reads a DCM `manifest.yml` and outputs the list of target names as a JSON array, ready to feed into a GitHub Actions matrix strategy. This is useful for dynamically running jobs across all targets without hardcoding them.
+
+```yaml
+- uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-parse-manifest@v1
+  id: manifest
+  with:
+    project-path: my-dcm-project/
+```
+
+### Inputs
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `project-path` | yes | Path to the DCM project directory (containing `manifest.yml`) |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `targets` | JSON array of target names (e.g. `["DCM_STAGE","DCM_PROD_US"]`) |
+
+### Example: Dynamic matrix strategy
+
+```yaml
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.manifest.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-parse-manifest@v1
+        id: manifest
+        with:
+          project-path: my-dcm-project/
+
+  deploy:
+    needs: parse
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.parse.outputs.targets) }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      # ... use other dcm actions with target: ${{ matrix.target }}
+```
+
+---
+
 ## dcm-connection-test
 
 Tests the Snowflake connection for a target, validates that the connection role matches the manifest `project_owner`, and checks whether the DCM project already exists.
@@ -49,6 +127,7 @@ Tests the Snowflake connection for a target, validates that the connection role 
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
+    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
 ```
 
 ### Inputs
@@ -57,6 +136,7 @@ Tests the Snowflake connection for a target, validates that the connection role 
 |-------|----------|-------------|
 | `target` | yes | DCM target name from `manifest.yml` |
 | `project-path` | yes | Path to the DCM project directory |
+| `snowflake-user` | yes | Snowflake username for authentication |
 
 ### Outputs
 
@@ -78,6 +158,7 @@ Runs `snow dcm plan` against a target, writes a changeset summary (CREATE / ALTE
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
+    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
     comment-on-pr: "true"
 ```
 
@@ -87,6 +168,7 @@ Runs `snow dcm plan` against a target, writes a changeset summary (CREATE / ALTE
 |-------|----------|---------|-------------|
 | `target` | yes | | DCM target name from `manifest.yml` |
 | `project-path` | yes | | Path to the DCM project directory |
+| `snowflake-user` | yes | | Snowflake username for authentication |
 | `create-if-not-exists` | no | `true` | Run `snow dcm create --if-not-exists` before planning |
 | `comment-on-pr` | no | `false` | Post the plan summary as a comment on the associated PR |
 
@@ -113,6 +195,7 @@ The `dcm-plan` action **must** run before this action in the same job -- it prod
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
+    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
     allow-drops: "false"
     test-expectations: "true"
     comment-on-pr: "true"
@@ -124,9 +207,11 @@ The `dcm-plan` action **must** run before this action in the same job -- it prod
 |-------|----------|---------|-------------|
 | `target` | yes | | DCM target name from `manifest.yml` |
 | `project-path` | yes | | Path to the DCM project directory |
+| `snowflake-user` | yes | | Snowflake username for authentication |
 | `allow-drops` | no | `false` | Set to `true` to skip destructive drop detection |
 | `test-expectations` | no | `false` | Refresh dynamic tables and run `snow dcm test` after deploy |
 | `comment-on-pr` | no | `false` | Post a deploy summary as a comment on the associated PR |
+| `post-scripts-path` | no | `""` | Relative path (from project-path) to a directory of `.sql` files to run after deploy, before refresh/test. Files are executed alphabetically with Jinja templating using manifest variables. |
 
 ### Outputs
 
@@ -165,17 +250,20 @@ jobs:
         with:
           target: DCM_STAGE
           project-path: my-dcm-project/
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-plan@v1
         with:
           target: DCM_STAGE
           project-path: my-dcm-project/
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-deploy@v1
         with:
           target: DCM_STAGE
           project-path: my-dcm-project/
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
           test-expectations: "true"
           comment-on-pr: "true"
 
@@ -195,12 +283,18 @@ jobs:
         with:
           target: DCM_PROD_US
           project-path: my-dcm-project/
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-deploy@v1
         with:
           target: DCM_PROD_US
           project-path: my-dcm-project/
+          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
           test-expectations: "true"
           comment-on-pr: "true"
 ```
+
+## Sample Workflows
+
+The [`GitHub_workflows/`](../GitHub_workflows/) directory contains ready-to-use workflow files that demonstrate how these actions work together. You can copy them into your repository's `.github/workflows/` directory and customize them for your project. See the [Sample Workflows README](../GitHub_workflows/README.md) for setup instructions.
