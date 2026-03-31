@@ -9,6 +9,8 @@ Use at your own risk.
 
 DCM Projects is currently in Public Preview. 
 
+Documentation: https://docs.snowflake.com/en/user-guide/dcm-projects/dcm-projects-overview 
+
 ---
 
 How to use this demo content:
