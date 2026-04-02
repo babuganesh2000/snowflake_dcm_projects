@@ -28,7 +28,7 @@
 #           with:
 #             target: DCM_STAGE
 #             project-path: Quickstarts/DCM_Project_Quickstart_1/
-#             snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+#             snowflake-user: ${{ env.SNOWFLAKE_USER }}
 #             comment-on-pr: "true"
 #
 #   When comment-on-pr is enabled, the calling job also needs:
@@ -119,7 +119,16 @@ runs:
 
         # Optionally create the project if it doesn't exist
         if [ "${{ inputs.create-if-not-exists }}" = "true" ]; then
-          snow dcm create --target "$TARGET" --if-not-exists -x
+          if ! snow dcm create --target "$TARGET" --if-not-exists -x; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "create-count=0" >> "$GITHUB_OUTPUT"
+            echo "alter-count=0" >> "$GITHUB_OUTPUT"
+            echo "drop-count=0" >> "$GITHUB_OUTPUT"
+            write_summary "### ❌ DCM Create for ${TARGET} failed"
+            write_summary "The \`snow dcm create --if-not-exists\` step failed. Plan was not attempted."
+            echo "plan-file=" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
         fi
 
         PLAN_METADATA_FILE="out/plan/plan_result.json"

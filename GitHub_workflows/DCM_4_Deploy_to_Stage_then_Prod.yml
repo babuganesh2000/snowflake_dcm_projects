@@ -15,6 +15,7 @@ permissions:
 
 env:
   DCM_PROJECT_PATH: Quickstarts/DCM_Project_Quickstart_1/
+  SNOWFLAKE_USER: GITHUB_ACTIONS_SERVICE_USER
 
 jobs:
   # ---- STAGE ----
@@ -31,7 +32,7 @@ jobs:
         with:
           target: DCM_STAGE
           project-path: ${{ env.DCM_PROJECT_PATH }}
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: ./actions/dcm-deploy
@@ -39,7 +40,7 @@ jobs:
         with:
           target: DCM_STAGE
           project-path: ${{ env.DCM_PROJECT_PATH }}
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           allow-drops: "false"
           test-expectations: "true"
           post-scripts-path: "SQL_post_scripts"
@@ -60,7 +61,7 @@ jobs:
         with:
           target: DCM_PROD_US
           project-path: ${{ env.DCM_PROJECT_PATH }}
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: ./actions/dcm-deploy
@@ -68,7 +69,7 @@ jobs:
         with:
           target: DCM_PROD_US
           project-path: ${{ env.DCM_PROJECT_PATH }}
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           allow-drops: "false"
           test-expectations: "true"
           post-scripts-path: "SQL_post_scripts"

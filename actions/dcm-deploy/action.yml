@@ -29,7 +29,7 @@
 #           with:
 #             target: DCM_STAGE
 #             project-path: Quickstarts/DCM_Project_Quickstart_1/
-#             snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+#             snowflake-user: ${{ env.SNOWFLAKE_USER }}
 #
 # Example usage (full pipeline with testing):
 #
@@ -37,7 +37,7 @@
 #     with:
 #       target: DCM_STAGE
 #       project-path: Quickstarts/DCM_Project_Quickstart_1/
-#       snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+#       snowflake-user: ${{ env.SNOWFLAKE_USER }}
 #       allow-drops: "false"
 #       test-expectations: "true"
 #       comment-on-pr: "true"

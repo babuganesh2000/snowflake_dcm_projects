@@ -53,7 +53,7 @@ All actions authenticate to Snowflake using the [`snowflakedb/snowflake-cli-acti
    ```
 
 3. Create a GitHub Environment for each DCM target (e.g. `DCM_STAGE`, `DCM_PROD_US`) — the environment name must match the `SUBJECT` claim
-4. Set the `SNOWFLAKE_USER` repository variable to the service user name
+4. Set `SNOWFLAKE_USER` in the workflow `env` block to the service user name
 5. Grant the workflow `id-token: write` permission
 
 **PAT and key-pair authentication** are also supported. If you cannot use OIDC, set the appropriate environment variables in your workflow before calling the actions:
@@ -146,7 +146,7 @@ Tests the Snowflake connection for a target, validates that the connection role 
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
-    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+    snowflake-user: ${{ env.SNOWFLAKE_USER }}
 ```
 
 ### Inputs
@@ -177,7 +177,7 @@ Runs `snow dcm plan` against a target, writes a changeset summary (CREATE / ALTE
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
-    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+    snowflake-user: ${{ env.SNOWFLAKE_USER }}
     comment-on-pr: "true"
 ```
 
@@ -214,7 +214,7 @@ The `dcm-plan` action **must** run before this action in the same job -- it prod
   with:
     target: DCM_STAGE
     project-path: my-dcm-project/
-    snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+    snowflake-user: ${{ env.SNOWFLAKE_USER }}
     allow-drops: "false"
     test-expectations: "true"
     comment-on-pr: "true"
@@ -253,6 +253,10 @@ on:
     branches: [main]
     paths: ['my-dcm-project/**']
 
+env:
+  DCM_PROJECT_PATH: my-dcm-project/
+  SNOWFLAKE_USER: SVC_GITHUB_ACTIONS
+
 jobs:
   # ---- STAGE ----
   stage:
@@ -268,21 +272,21 @@ jobs:
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-connection-test@v1
         with:
           target: DCM_STAGE
-          project-path: my-dcm-project/
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-plan@v1
         with:
           target: DCM_STAGE
-          project-path: my-dcm-project/
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-deploy@v1
         with:
           target: DCM_STAGE
-          project-path: my-dcm-project/
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           test-expectations: "true"
           comment-on-pr: "true"
 
@@ -301,15 +305,15 @@ jobs:
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-plan@v1
         with:
           target: DCM_PROD_US
-          project-path: my-dcm-project/
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           comment-on-pr: "true"
 
       - uses: Snowflake-Labs/snowflake_dcm_projects/actions/dcm-deploy@v1
         with:
           target: DCM_PROD_US
-          project-path: my-dcm-project/
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          project-path: ${{ env.DCM_PROJECT_PATH }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
           test-expectations: "true"
           comment-on-pr: "true"
 ```

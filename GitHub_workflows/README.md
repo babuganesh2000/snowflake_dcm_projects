@@ -62,16 +62,17 @@ For the default configuration, create:
 
 > **Tip:** You can add environment protection rules (e.g. required reviewers) on `DCM_PROD_US` to gate production deployments with manual approval.
 
-### 3. Set Repository Variables
+### 3. Set Workflow Variables
 
-Go to **Settings > Secrets and variables > Actions > Variables** and create:
+The sample workflows define the DCM project path and Snowflake username in the workflow-level `env:` block. Update these values in each workflow file you use:
 
-| Variable | Value | Example |
-|----------|-------|---------|
-| `DCM_PROJECT_PATH` | Relative path from repo root to your DCM project directory (must end with `/`) | `Quickstarts/DCM_Project_Quickstart_1/` |
-| `SNOWFLAKE_USER` | The Snowflake username used for deployments | `GITHUB_ACTIONS_SERVICE_USER` |
+```yaml
+env:
+  DCM_PROJECT_PATH: your/project/path/       # relative path from repo root (must end with /)
+  SNOWFLAKE_USER: GITHUB_ACTIONS_SERVICE_USER # Snowflake username for deployments
+```
 
-These are **repository-level** variables, shared across all environments. If you need different users per environment, move `SNOWFLAKE_USER` to an environment-level variable instead.
+> **Tip:** You can alternatively store these as **repository variables** (Settings > Secrets and variables > Actions > Variables) and reference them with `${{ vars.SNOWFLAKE_USER }}` / `${{ vars.DCM_PROJECT_PATH }}` instead. If you need different users per environment, use environment-level variables.
 
 ### 4. Configure Authentication
 
@@ -85,7 +86,7 @@ To use OIDC:
 
 1. Create a Snowflake service user and configure a security integration that trusts GitHub's OIDC provider
 2. Grant your workflow `id-token: write` permission (already set in the sample workflows)
-3. Set `SNOWFLAKE_USER` as a repository variable (step 3 above)
+3. Set `SNOWFLAKE_USER` in the workflow `env` block (step 3 above)
 
 No secrets are required — the GitHub environment's OIDC token handles authentication automatically.
 
@@ -146,12 +147,12 @@ on:
 
 The actions use a consistent pattern to authenticate with Snowflake. Understanding this flow helps with debugging:
 
-1. **`DCM_PROJECT_PATH`** (repo variable) locates `manifest.yml` in the repository
+1. **`DCM_PROJECT_PATH`** (workflow `env` value) locates `manifest.yml` in the repository
 2. **`manifest.yml`** is parsed to extract `account_identifier`, `project_owner`, and `project_name` for each target
 3. These values are set as environment variables inside the action:
    - `SNOWFLAKE_ACCOUNT` -- from `account_identifier`
    - `SNOWFLAKE_ROLE` -- from `project_owner`
-4. **`SNOWFLAKE_USER`** (repo variable) is passed to the action via the `snowflake-user` input
+4. **`SNOWFLAKE_USER`** (workflow `env` value) is passed to the action via the `snowflake-user` input
 5. **Authentication** is handled by the Snowflake CLI action. With OIDC (default), the GitHub environment's identity token is used. With PAT or key-pair, the corresponding `SNOWFLAKE_PASSWORD` or `SNOWFLAKE_PRIVATE_KEY_RAW` environment variable is picked up from your workflow's `env` block.
 6. The Snowflake CLI picks up all `SNOWFLAKE_*` environment variables automatically — no `connections.toml` file is needed
 

@@ -9,6 +9,7 @@ permissions:
 
 env:
   DCM_PROJECT_PATH: Quickstarts/DCM_Project_Quickstart_1/
+  SNOWFLAKE_USER: GITHUB_ACTIONS_SERVICE_USER
 
 jobs:
   PARSE_MANIFEST:
@@ -41,4 +42,4 @@ jobs:
         with:
           target: ${{ matrix.target }}
           project-path: ${{ env.DCM_PROJECT_PATH }}
-          snowflake-user: ${{ vars.SNOWFLAKE_USER }}
+          snowflake-user: ${{ env.SNOWFLAKE_USER }}
